@@ -21,11 +21,11 @@ def fit_gauss_mf(x,c,m):
 def gauss_mf(x,c,sigma):
     return np.exp(-0.5*np.power((x-c)/sigma,2))
 
-def gen_gauss_mf(x,c,sigma):
-    return 0
+def gen_bell_mf(x,a,b,c):
+    return 1/(1+np.power(np.abs((x-c)/a),2*b))
 
-def trap_mf():
-    return 0
+def trap_mf(x,a,b,c,d):
+    return np.max(np.min([(x-a)/(b-a),1,(d-x)/(d-c)]),0)
 
 def fit_mf():
     
