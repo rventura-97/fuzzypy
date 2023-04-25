@@ -38,11 +38,19 @@ class class_model:
         
         # Rank unique data samples
         r, D_mm_r = rank_samples(D_mm, U)
+        
+        # Identify prototypes
             
         
         
         return 0
 
+
+def identify_prototypes(r, D_mm_r):
+    
+    
+    return 0
+    
 
 def rank_samples(D_mm,U):
     D_mm_r = np.zeros_like(D_mm)
