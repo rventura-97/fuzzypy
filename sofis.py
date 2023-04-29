@@ -45,11 +45,60 @@ class class_model:
         # Initialize clouds
         Phi, S = init_clouds(p, X)
         
-        # Compute unimodal densities at cloud centers
-        Phi_D_umd = unimodal_density(Phi[:,0], X)
+        # Compute multimodal densities at cloud centers
+        Phi_D_mmd = [len(S[i])*unimodal_density(Phi[i], X) for i in range(0,len(Phi))]
+        
+        # Compute radius of local influence around cloud centers
+        G = radius_of_influence(X,2)
+        
+        # Select most representive clouds
+        P = select_clouds(Phi, Phi_D_mmd, G)
         
         return 0
 
+
+def select_clouds(Phi,Phi_D_mmd,G):
+    P = []
+    Phi_neigh = [[] for _ in range(len(Phi))]
+    
+    # Find neighbouring clouds of each cloud
+    for i in range(0,len(Phi)):
+        for j in range(0,len(Phi)):
+            if i != j:
+                if np.linalg.norm(Phi[i]-Phi[j])<=G:
+                    Phi_neigh[i].append(j)
+                    
+    # Find most representative clouds
+    for i in range(0,len(Phi)):
+        if Phi_neigh[i] != []:
+            if Phi_D_mmd[i] > np.max([Phi_D_mmd[j] for j in Phi_neigh[i]]):
+                P.append(Phi[i])
+        else:
+            P.append(Phi[i])
+
+    return P
+
+
+def radius_of_influence(X,L):
+    N = X.shape[1]
+    pair_dists = np.zeros(int(N*(N-1)/2))
+    c = 0
+    for i in range(0,N):
+        for j in range(0,N):
+            if j > i:
+                pair_dists[c] = np.linalg.norm(X[:,i]-X[:,j])
+                c += 1
+    
+    pair_dists_2 = np.power(pair_dists,2)
+    avg_dist = np.mean(pair_dists)   
+
+    G = np.sum(pair_dists_2[pair_dists_2<=avg_dist]) / np.sum(pair_dists<avg_dist)
+
+    if L > 1:
+        for i in range(1,L):
+            G = np.sum(pair_dists_2[pair_dists_2<=G]) / np.sum(pair_dists<G)
+
+    return G
 
 def unimodal_density(x,X):
     num = 0
