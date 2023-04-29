@@ -40,16 +40,56 @@ class class_model:
         r, D_mm_r = rank_samples(D_mm, U)
         
         # Identify prototypes
-            
+        p = identify_prototypes(r, D_mm_r)    
         
+        # Initialize clouds
+        Phi, S = init_clouds(p, X)
+        
+        # Compute unimodal densities at cloud centers
+        Phi_D_umd = unimodal_density(Phi[:,0], X)
         
         return 0
 
 
+def unimodal_density(x,X):
+    num = 0
+    K = X.shape[1]
+    for l in range(0,K):
+        for j in range(0,K):
+            num += np.power(np.linalg.norm(X[:,l]-X[:,j]),2)
+            
+    den = 0
+    for j in range(0,K):
+        den += np.power(np.linalg.norm(x-X[:,j]),2)
+    
+    D = num/(2*K*den)
+    
+    return D
+
+
+def init_clouds(p,X):
+    
+    S = [[] for _ in range(p.shape[1])]
+    
+    for i in range(0,X.shape[1]):
+        S[np.argmin(np.linalg.norm(X[:,i].reshape(-1,1)-p,axis=0))].append(X[:,i])
+    
+    
+    phi = [np.mean(np.column_stack(S[i]),axis=1) for i in range(0,len(S))]
+    
+    return phi, S
+    
+
+
 def identify_prototypes(r, D_mm_r):
+    p = []
+    for i in range(1,D_mm_r.size-1):
+        if D_mm_r[i]>D_mm_r[i-1] and D_mm_r[i]>D_mm_r[i+1]:
+            p.append(r[:,i])
     
+    p = np.column_stack(p)
     
-    return 0
+    return p
     
 
 def rank_samples(D_mm,U):
