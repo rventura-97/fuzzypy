@@ -3,6 +3,7 @@ import numpy as np
 from sofis import sofis
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
 # %%
 iris_data = load_iris()
@@ -13,8 +14,11 @@ X_off, X_on, y_off, y_on = train_test_split(X_train,y_train,test_size=0.5,random
 
 # %% Offline training
 mod = sofis(L=1,dist='euclidean')
-mod.fit_offline(X_off,y_off)
+mod.fit_offline(X_train,y_train)
 
-# %% Online training
+# %% Test model
+y_pred = mod.predict(X_test)
 
+# %%
+accuracy = accuracy_score(y_test, y_pred)
 

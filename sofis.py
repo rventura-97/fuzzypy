@@ -8,6 +8,8 @@ class sofis:
         self.L = L
         if dist=='euclidean':
             self.dist = dist_euclidean
+        elif dist=='mahalanobis':
+            self.dist = dist_mahalanobis
         
     def fit_offline(self,X,y):
         # Pre-process data
@@ -20,6 +22,18 @@ class sofis:
         
     def fit_online(self,X,y):
         return 0
+    
+    def predict(self,X):
+        X = np.transpose(X)
+        y_pred = np.zeros(X.shape[1])
+        
+        for i in range(0,y_pred.size):
+            max_lambdas = np.zeros(len(self.class_models))
+            for c in range(0,max_lambdas.size):
+                max_lambdas[c] = self.class_models[c].max_lambda(X[:,i])
+            y_pred[i] = np.argmax(max_lambdas)
+        
+        return y_pred
         
     
     def __init_class_models(self,y):
@@ -32,13 +46,17 @@ class class_model:
         self.L = L
         self.dist = dist
         self.P = []
+        self.Sigma = []
         self.Sigma_inv = []
         
     def fit_offline(self,X):
         # Initialize global model parameters
         self.Mu = np.mean(X,axis=1)
         self.X = np.mean([np.dot(X[:,i],np.transpose(X[:,i])) for i in range(0,X.shape[1])])
-        self.Sigma_inv = np.linalg.inv(np.cov(np.transpose(X)))
+        self.Sigma = np.cov(X)
+        self.Sigma_inv = np.linalg.inv(self.Sigma)
+        if self.dist == dist_mahalanobis:
+            self.dist = lambda x1,x2: dist_mahalanobis(x1,x2,self.Sigma_inv)
         
         
         # Find unique samples and their frequencies
@@ -46,157 +64,138 @@ class class_model:
         U = np.transpose(U)
         
         # Compute multimodel densities for each unique sample
-        D_mm = multimod_density(X, U, Uf)
+        D_mm = np.array([Uf[i]*unimodal_density(U[:,i],X,self.dist) for i in range(0,U.shape[1])])
         
         # Rank unique data samples
-        r, D_mm_r = rank_samples(D_mm, U)
+        r, D_mm_r = self.__rank_samples(D_mm, U)
         
-        # Identify prototypes
-        p = identify_prototypes(r, D_mm_r)    
-        
+
         # Initialize clouds
-        Phi, S = init_clouds(p, X)
+        Phi, S = self.__init_clouds(r, D_mm_r, X)
         
         # Compute multimodal densities at cloud centers
-        Phi_D_mmd = [len(S[i])*unimodal_density(Phi[i], X) for i in range(0,len(Phi))]
+        Phi_D_mmd = [len(S[i])*unimodal_density(Phi[i], X,self.dist) for i in range(0,len(Phi))]
         
         # Compute radius of local influence around cloud centers
-        G = radius_of_influence(X,1)
+        G = self.__radius_of_influence(X,self.L)
         
         # Select most representive clouds
-        self.P = select_clouds(Phi, Phi_D_mmd, G)
+        self.P = np.column_stack(self.__select_clouds(Phi, Phi_D_mmd, G))
+        
+    def max_lambda(self,x):
+        lambda_x_p = np.zeros(self.P.shape[1])
+        for i in range(0,lambda_x_p.size):
+            lambda_x_p[i] = np.exp(-np.power(self.dist(x,self.P[:,i]),2))
+        return np.max(lambda_x_p)
+        
+    def __rank_samples(self,D_mm,U):
+        D_mm_r = np.zeros_like(D_mm)
+        r = np.zeros_like(U)
+        D_mm_max_idx = np.argmax(D_mm) 
+        r[:,0] = U[:,D_mm_max_idx]
+        U = np.delete(U,(D_mm_max_idx),axis=1)
+        D_mm_r[0] = D_mm[D_mm_max_idx]
+        
+        for k in range(0,D_mm.size-1):
+            dist_k = np.zeros(U.shape[1])
+            for i in range(0,dist_k.size):
+                dist_k[i] = self.dist(r[:,k],U[:,i])
+            min_dist_idx = np.argmin(dist_k)
+            r[:,k+1] = U[:,min_dist_idx]
+            D_mm_r[k+1] = D_mm[min_dist_idx]
+            U = np.delete(U,(min_dist_idx),axis=1)
+            
+        return r, D_mm_r
+
+    def __init_clouds(self, r, D_mm_r,X):
+        p = []
+        
+        if D_mm_r[0] > D_mm_r[1]:
+            p.append(r[:,0])
+        
+        for i in range(1,D_mm_r.size-1):
+            if D_mm_r[i]>D_mm_r[i-1] and D_mm_r[i]>D_mm_r[i+1]:
+                p.append(r[:,i])
+        
+        if D_mm_r[-1] > D_mm_r[-2]:
+            p.append(r[:,-1])
+            
+        p = np.column_stack(p)
         
         
+        S = [[] for _ in range(p.shape[1])]
+        
+        for i in range(0,X.shape[1]):
+            dist_x_p = np.zeros(p.shape[1])
+            for j in range(0,p.shape[1]):
+                dist_x_p[j] = self.dist(X[:,i],p[:,j])
+            S[np.argmin(dist_x_p)].append(X[:,i])
+        
+        
+        phi = [np.mean(np.column_stack(S[i]),axis=1) for i in range(0,len(S))]
+        
+        return phi, S
+        
+    def __radius_of_influence(self,X,L):
+        N = X.shape[1]
+        pair_dists = np.zeros(int(N*(N-1)/2))
+        c = 0
+        for i in range(0,N):
+            for j in range(0,N):
+                if j > i:
+                    pair_dists[c] = np.power(self.dist(X[:,i],X[:,j]),2)
+                    c += 1
+        
+        avg_dist = np.mean(pair_dists)   
+
+        G = np.sum(pair_dists[pair_dists<=avg_dist]) / np.sum(pair_dists<=avg_dist)
+
+        if L > 1:
+            for i in range(1,L):
+                G = np.sum(pair_dists[pair_dists<=G]) / np.sum(pair_dists<=G)
+
+        return G        
 
 
-def select_clouds(Phi,Phi_D_mmd,G):
-    P = []
-    Phi_neigh = [[] for _ in range(len(Phi))]
-    
-    # Find neighbouring clouds of each cloud
-    for i in range(0,len(Phi)):
-        for j in range(0,len(Phi)):
-            if i != j:
-                if np.power(np.linalg.norm(Phi[i]-Phi[j]),2)<=G:
-                    Phi_neigh[i].append(j)
-                    
-    # Find most representative clouds
-    for i in range(0,len(Phi)):
-        if Phi_neigh[i] != []:
-            if Phi_D_mmd[i] > np.max([Phi_D_mmd[j] for j in Phi_neigh[i]]):
+    def __select_clouds(self,Phi,Phi_D_mmd,G):
+        P = []
+        Phi_neigh = [[] for _ in range(len(Phi))]
+        
+        # Find neighbouring clouds of each cloud
+        for i in range(0,len(Phi)):
+            for j in range(0,len(Phi)):
+                if i != j:
+                    if np.power(self.dist(Phi[i],Phi[j]),2)<=G:
+                        Phi_neigh[i].append(j)
+                        
+        # Find most representative clouds
+        for i in range(0,len(Phi)):
+            if Phi_neigh[i] != []:
+                if Phi_D_mmd[i] > np.max([Phi_D_mmd[j] for j in Phi_neigh[i]]):
+                    P.append(Phi[i])
+            else:
                 P.append(Phi[i])
-        else:
-            P.append(Phi[i])
-
-    return P
-
-
-def radius_of_influence(X,L):
-    N = X.shape[1]
-    pair_dists = np.zeros(int(N*(N-1)/2))
-    c = 0
-    for i in range(0,N):
-        for j in range(0,N):
-            if j > i:
-                pair_dists[c] = np.power(np.linalg.norm(X[:,i]-X[:,j]),2)
-                c += 1
     
-    avg_dist = np.mean(pair_dists)   
+        return P
 
-    G = np.sum(pair_dists[pair_dists<=avg_dist]) / np.sum(pair_dists<=avg_dist)
 
-    if L > 1:
-        for i in range(1,L):
-            G = np.sum(pair_dists[pair_dists<=G]) / np.sum(pair_dists<=G)
 
-    return G
-
-def unimodal_density(x,X):
+def unimodal_density(x,X,dist_func):
     num = 0
     K = X.shape[1]
     for l in range(0,K):
         for j in range(0,K):
-            num += np.power(np.linalg.norm(X[:,l]-X[:,j]),2)
-            
+            num += np.power(dist_func(X[:,l],X[:,j]),2) 
     den = 0
     for j in range(0,K):
-        den += np.power(np.linalg.norm(x-X[:,j]),2)
-    
+        den += np.power(dist_func(x,X[:,j]),2)
     D = num/(2*K*den)
-    
-    return D
-
-
-def init_clouds(p,X):
-    
-    S = [[] for _ in range(p.shape[1])]
-    
-    for i in range(0,X.shape[1]):
-        S[np.argmin(np.linalg.norm(X[:,i].reshape(-1,1)-p,axis=0))].append(X[:,i])
-    
-    
-    phi = [np.mean(np.column_stack(S[i]),axis=1) for i in range(0,len(S))]
-    
-    return phi, S
-    
-
-
-def identify_prototypes(r, D_mm_r):
-    p = []
-    for i in range(1,D_mm_r.size-1):
-        if D_mm_r[i]>D_mm_r[i-1] and D_mm_r[i]>D_mm_r[i+1]:
-            p.append(r[:,i])
-    
-    p = np.column_stack(p)
-    
-    return p
-    
-
-def rank_samples(D_mm,U):
-    D_mm_r = np.zeros_like(D_mm)
-    r = np.zeros_like(U)
-    
-    D_mm_max_idx = np.argmax(D_mm) 
-    r[:,0] = U[:,D_mm_max_idx]
-    U = np.delete(U,(D_mm_max_idx),axis=1)
-    D_mm_r[0] = D_mm[D_mm_max_idx]
-    
-    for k in range(0,D_mm.size-1):
-        dist_k = np.zeros(U.shape[1])
-        for i in range(0,dist_k.size):
-            dist_k[i] = np.linalg.norm(r[:,k]-U[:,i])
-        min_dist_idx = np.argmin(dist_k)
-        r[:,k+1] = U[:,min_dist_idx]
-        D_mm_r[k+1] = D_mm[min_dist_idx]
-        U = np.delete(U,(min_dist_idx),axis=1)
-        
-    return r, D_mm_r
-
-def multimod_density(X,U,Uf):
-    D = np.zeros(U.shape[1])
-    K = np.sum(Uf)
-    
-    # Compute numerator value
-    num_val = 0
-    for i in range(0,X.shape[1]):
-        for j in range(0,X.shape[1]):
-            if i!=j:
-                num_val += np.power(np.linalg.norm(X[:,i]-X[:,j]),2)  
-                
-    # Compute multimodal densities
-    for i in range(0,U.shape[1]):
-        den_val = 0
-        for j in range(0,X.shape[1]):
-            den_val += np.power(np.linalg.norm(U[:,i]-X[:,j]),2)
-        D[i] = (Uf[i]*num_val)/(2*K*den_val)
-    
-    
     return D
 
 def dist_euclidean(x1,x2):
     return np.linalg.norm(x2-x1)
 
 def dist_mahalanobis(x1,x2,C_inv):
-    return np.sqrt()
+    return np.sqrt(np.matmul(np.matmul(x1-x2,C_inv),x1-x2))
     
     
