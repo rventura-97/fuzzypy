@@ -2,33 +2,45 @@ import numpy as np
 
 class sofis:
     
-    def __init__(self):
+    def __init__(self,L=1,dist='euclidean'):
         self.class_models = []
         self.feat_names = []
+        self.L = L
+        if dist=='euclidean':
+            self.dist = dist_euclidean
         
-    def fit(self,X,y):
+    def fit_offline(self,X,y):
         # Pre-process data
         X = np.transpose(X)
-        
         # Initialize class sub-models
         self.__init_class_models(y)
-        
+        # Train each class model
         for c in np.unique(y):
-            self.class_models[c].fit(X[:,y==c]) 
+            self.class_models[c].fit_offline(X[:,y==c]) 
+        
+    def fit_online(self,X,y):
+        return 0
         
     
     def __init_class_models(self,y):
-        self.class_models = [class_model()]*np.unique(y).size
+        self.class_models = [class_model(L=self.L,dist=self.dist) for _ in range(0,np.unique(y).size)]
         
         
 class class_model:
     
-    def __init__(self):
-        self.label = ''
-        
+    def __init__(self,L,dist):
+        self.L = L
+        self.dist = dist
         self.P = []
+        self.Sigma_inv = []
         
-    def fit(self,X):
+    def fit_offline(self,X):
+        # Initialize global model parameters
+        self.Mu = np.mean(X,axis=1)
+        self.X = np.mean([np.dot(X[:,i],np.transpose(X[:,i])) for i in range(0,X.shape[1])])
+        self.Sigma_inv = np.linalg.inv(np.cov(np.transpose(X)))
+        
+        
         # Find unique samples and their frequencies
         U,Uf = np.unique(np.transpose(X),axis=0,return_counts=True)
         U = np.transpose(U)
@@ -49,12 +61,12 @@ class class_model:
         Phi_D_mmd = [len(S[i])*unimodal_density(Phi[i], X) for i in range(0,len(Phi))]
         
         # Compute radius of local influence around cloud centers
-        G = radius_of_influence(X,2)
+        G = radius_of_influence(X,1)
         
         # Select most representive clouds
-        P = select_clouds(Phi, Phi_D_mmd, G)
+        self.P = select_clouds(Phi, Phi_D_mmd, G)
         
-        return 0
+        
 
 
 def select_clouds(Phi,Phi_D_mmd,G):
@@ -65,7 +77,7 @@ def select_clouds(Phi,Phi_D_mmd,G):
     for i in range(0,len(Phi)):
         for j in range(0,len(Phi)):
             if i != j:
-                if np.linalg.norm(Phi[i]-Phi[j])<=G:
+                if np.power(np.linalg.norm(Phi[i]-Phi[j]),2)<=G:
                     Phi_neigh[i].append(j)
                     
     # Find most representative clouds
@@ -86,17 +98,16 @@ def radius_of_influence(X,L):
     for i in range(0,N):
         for j in range(0,N):
             if j > i:
-                pair_dists[c] = np.linalg.norm(X[:,i]-X[:,j])
+                pair_dists[c] = np.power(np.linalg.norm(X[:,i]-X[:,j]),2)
                 c += 1
     
-    pair_dists_2 = np.power(pair_dists,2)
     avg_dist = np.mean(pair_dists)   
 
-    G = np.sum(pair_dists_2[pair_dists_2<=avg_dist]) / np.sum(pair_dists<avg_dist)
+    G = np.sum(pair_dists[pair_dists<=avg_dist]) / np.sum(pair_dists<=avg_dist)
 
     if L > 1:
         for i in range(1,L):
-            G = np.sum(pair_dists_2[pair_dists_2<=G]) / np.sum(pair_dists<G)
+            G = np.sum(pair_dists[pair_dists<=G]) / np.sum(pair_dists<=G)
 
     return G
 
@@ -181,5 +192,11 @@ def multimod_density(X,U,Uf):
     
     
     return D
+
+def dist_euclidean(x1,x2):
+    return np.linalg.norm(x2-x1)
+
+def dist_mahalanobis(x1,x2,C_inv):
+    return np.sqrt()
     
     
