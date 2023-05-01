@@ -24,9 +24,6 @@ y_test = occup_data['y_test']
 mod = sofis(L=1,dist='euclidean')
 mod.fit_offline(X_train,y_train)
 
-# %%
-
-
 # %% Test model
 y_pred = mod.predict(X_test)
 
