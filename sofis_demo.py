@@ -21,12 +21,10 @@ y_train = occup_data['y_train']
 y_test = occup_data['y_test']
 
 # %% Offline training
-mod = sofis(L=1,dist='euclidean')
+mod = sofis(L=6,dist='euclidean')
 mod.fit_offline(X_train,y_train)
 
 # %% Test model
 y_pred = mod.predict(X_test)
-
-# %%
 accuracy = accuracy_score(y_test, y_pred)
 

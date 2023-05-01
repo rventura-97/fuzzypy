@@ -4,12 +4,13 @@ from scipy.spatial.distance import pdist, cdist, squareform
 
 class sofis:
     
-    def __init__(self,L=1,dist='euclidean'):
+    def __init__(self,L=1,dist='euclidean',predict_metric='distance'):
         self.class_models = []
         self.feat_names = []
         self.L = L
         self.N = 0
         self.dist = dist
+        self.predict_metric = predict_metric
         
     def fit_offline(self,X,y):
         # Pre-process data
@@ -29,10 +30,14 @@ class sofis:
         y_pred = np.zeros(X.shape[1])
         
         for i in range(0,y_pred.size):
-            max_lambdas = np.zeros(len(self.class_models))
-            for c in range(0,max_lambdas.size):
-                max_lambdas[c] = self.class_models[c].max_lambda(X[:,i])
-            y_pred[i] = np.argmax(max_lambdas)
+            vals = np.zeros(len(self.class_models))
+            for c in range(0,vals.size):
+                vals[c] = self.class_models[c].predict(X[:,i],self.predict_metric)
+                    
+            if self.predict_metric=='lambda':     
+                y_pred[i] = np.argmax(vals)
+            else:
+                y_pred[i] = np.argmin(vals)
         
         return y_pred
         
@@ -91,12 +96,21 @@ class class_model:
         
         # Select most representive clouds
         self.P = self.__select_clouds(Phi, Phi_D_mmd, self.G)
-        
-    def max_lambda(self,x):
-        lambda_x_p = np.zeros(self.P.shape[1])
-        for i in range(0,lambda_x_p.size):
-            lambda_x_p[i] = np.exp(-np.power(self.dist(x,self.P[:,i]),2))
-        return np.max(lambda_x_p)
+         
+    def predict(self,x,predict_metric):
+        vals = np.zeros(self.P.shape[1])
+        if self.dist == 'euclidean':
+            if predict_metric == 'lambda':
+                vals = np.exp(-np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2))
+            else:
+                vals = np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2)
+            
+        if predict_metric == 'lambda':
+            val = np.max(vals)
+        else:
+            val = np.min(vals)
+                
+        return val
         
     def __rank_samples(self,D_mm,U,dist_func):
         D_mm_r = np.zeros_like(D_mm)
