@@ -128,8 +128,23 @@ class class_model:
         # Update global model parameters
         Mu_k = ((self.K-1)/self.K)*self.Mu + (1/self.K)*x
         X_k = ((self.K-1)/self.K)*self.X + (1/self.K)*np.dot(x,np.transpose(x))
-            
+        dists_xk_x = np.squeeze(np.power(cdist(x.reshape(1,-1),np.transpose(self.x),metric='euclidean'),2))
+        ###
+        CumProx_k = np.append(self.CumProx + dists_xk_x,np.sum(dists_xk_x))
+        CumProxSum_k = np.sum(CumProx_k)
+        ###
+        MeanDist_k = (1/np.power(self.K+1,2))*CumProxSum_k
+        G_k = (MeanDist_k/self.MeanDist)*self.G
         
+        # Compute sample unimodal density
+        
+        # Compute cloud unimodal densities
+        
+        # Evaluate density condition
+        
+        
+        
+        self.x = np.column_stack((self.x,x))
         self.K += 1
         
     def __rank_samples(self,D_mm,U,dist_func):
