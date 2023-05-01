@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy.spatial.distance import pdist, squareform
 
 class sofis:
     
@@ -36,6 +38,9 @@ class sofis:
         return y_pred
         
     
+    def plot_clouds(self,x1,x2,X,y):
+        return 0
+    
     def __init_class_models(self,y):
         self.class_models = [class_model(L=self.L,dist=self.dist) for _ in range(0,np.unique(y).size)]
         
@@ -48,15 +53,21 @@ class class_model:
         self.P = []
         self.Sigma = []
         self.Sigma_inv = []
+        self.CumProx = []
+        self.CumProxSum = 0
         
     def fit_offline(self,X):
         # Initialize global model parameters
         self.Mu = np.mean(X,axis=1)
         self.X = np.mean([np.dot(X[:,i],np.transpose(X[:,i])) for i in range(0,X.shape[1])])
-        self.Sigma = np.cov(X)
-        self.Sigma_inv = np.linalg.inv(self.Sigma)
+        
         if self.dist == dist_mahalanobis:
+            self.Sigma = np.cov(X)
+            self.Sigma_inv = np.linalg.inv(self.Sigma)
             self.dist = lambda x1,x2: dist_mahalanobis(x1,x2,self.Sigma_inv)
+            
+        self.CumProx = cum_prox(X, self.dist)
+        self.CumProxSum = np.sum(self.CumProx)
         
         
         # Find unique samples and their frequencies
@@ -64,7 +75,7 @@ class class_model:
         U = np.transpose(U)
         
         # Compute multimodel densities for each unique sample
-        D_mm = np.array([Uf[i]*unimodal_density(U[:,i],X,self.dist) for i in range(0,U.shape[1])])
+        D_mm = np.array([Uf[i]*unimodal_density(U[:,i],X,self.dist,cum_prox_sum=self.CumProxSum) for i in range(0,U.shape[1])])
         
         # Rank unique data samples
         r, D_mm_r = self.__rank_samples(D_mm, U)
@@ -74,7 +85,7 @@ class class_model:
         Phi, S = self.__init_clouds(r, D_mm_r, X)
         
         # Compute multimodal densities at cloud centers
-        Phi_D_mmd = [len(S[i])*unimodal_density(Phi[i], X,self.dist) for i in range(0,len(Phi))]
+        Phi_D_mmd = [len(S[i])*unimodal_density(Phi[i], X,self.dist,cum_prox_sum=self.CumProxSum) for i in range(0,len(Phi))]
         
         # Compute radius of local influence around cloud centers
         G = self.__radius_of_influence(X,self.L)
@@ -178,14 +189,27 @@ class class_model:
     
         return P
 
+def cum_prox(X,dist_func):
+    vals = np.zeros(X.shape[1])
+    for i in range(vals.size):
+        for j in range(vals.size):
+            if i!=j:
+                vals[i] = vals[i] + np.power(dist_func(X[:,i],X[:,j]),2)
+                
+    vals = np.sum(np.power(np.triu(squareform(pdist(np.transpose(X),'euclidean'))),2),axis=1)
+                
+    return vals
 
-
-def unimodal_density(x,X,dist_func):
+def unimodal_density(x,X,dist_func,cum_prox_sum=None):
     num = 0
-    K = X.shape[1]
-    for l in range(0,K):
-        for j in range(0,K):
-            num += np.power(dist_func(X[:,l],X[:,j]),2) 
+    if cum_prox_sum == None:        
+        K = X.shape[1]
+        for l in range(0,K):
+            for j in range(0,K):
+                num += np.power(dist_func(X[:,l],X[:,j]),2) 
+    else:
+        num = cum_prox_sum
+            
     den = 0
     for j in range(0,K):
         den += np.power(dist_func(x,X[:,j]),2)
