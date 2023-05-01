@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.distance import pdist, cdist, squareform
 
 class sofis:
     
@@ -8,10 +8,11 @@ class sofis:
         self.class_models = []
         self.feat_names = []
         self.L = L
-        if dist=='euclidean':
-            self.dist = dist_euclidean
-        elif dist=='mahalanobis':
-            self.dist = dist_mahalanobis
+        # if dist=='euclidean':
+        #     self.dist = dist_euclidean
+        # elif dist=='mahalanobis':
+        #     self.dist = dist_mahalanobis
+        self.dist = dist
         
     def fit_offline(self,X,y):
         # Pre-process data
@@ -75,10 +76,10 @@ class class_model:
         U = np.transpose(U)
         
         # Compute multimodel densities for each unique sample
-        D_mm = np.array([Uf[i]*unimodal_density(U[:,i],X,self.dist,cum_prox_sum=self.CumProxSum) for i in range(0,U.shape[1])])
+        D_mm = np.multiply(Uf,unimodal_density(U, X, self.dist,cum_prox_sum=self.CumProxSum))
         
         # Rank unique data samples
-        r, D_mm_r = self.__rank_samples(D_mm, U)
+        r, D_mm_r = self.__rank_samples(D_mm, U,self.dist)
         
 
         # Initialize clouds
@@ -99,22 +100,26 @@ class class_model:
             lambda_x_p[i] = np.exp(-np.power(self.dist(x,self.P[:,i]),2))
         return np.max(lambda_x_p)
         
-    def __rank_samples(self,D_mm,U):
+    def __rank_samples(self,D_mm,U,dist_func):
         D_mm_r = np.zeros_like(D_mm)
         r = np.zeros_like(U)
-        D_mm_max_idx = np.argmax(D_mm) 
-        r[:,0] = U[:,D_mm_max_idx]
-        U = np.delete(U,(D_mm_max_idx),axis=1)
-        D_mm_r[0] = D_mm[D_mm_max_idx]
         
-        for k in range(0,D_mm.size-1):
-            dist_k = np.zeros(U.shape[1])
-            for i in range(0,dist_k.size):
-                dist_k[i] = self.dist(r[:,k],U[:,i])
-            min_dist_idx = np.argmin(dist_k)
-            r[:,k+1] = U[:,min_dist_idx]
-            D_mm_r[k+1] = D_mm[min_dist_idx]
-            U = np.delete(U,(min_dist_idx),axis=1)
+        k_1_idx = np.argmax(D_mm) 
+        r[:,0] = U[:,k_1_idx]
+        D_mm_r[0] = D_mm[k_1_idx]
+        
+        pair_dists = squareform(pdist(np.transpose(U)))
+        pair_dists[np.diag_indices(pair_dists.shape[0])] = np.nan
+        
+        for k in range(1,D_mm.size):
+            k_idx = np.nanargmin(pair_dists[k_1_idx,:])
+            r[:,k] = U[:,k_idx]
+            D_mm_r[k] = D_mm[k_idx]
+            pair_dists[:,k_1_idx] = np.nan
+            pair_dists[k_1_idx,:] = np.nan
+            k_1_idx = k_idx
+            
+
             
         return r, D_mm_r
 
@@ -189,32 +194,26 @@ class class_model:
     
         return P
 
-def cum_prox(X,dist_func):
-    vals = np.zeros(X.shape[1])
-    for i in range(vals.size):
-        for j in range(vals.size):
-            if i!=j:
-                vals[i] = vals[i] + np.power(dist_func(X[:,i],X[:,j]),2)
-                
-    vals = np.sum(np.power(np.triu(squareform(pdist(np.transpose(X),'euclidean'))),2),axis=1)
-                
-    return vals
 
-def unimodal_density(x,X,dist_func,cum_prox_sum=None):
-    num = 0
+def unimodal_density(x,Xj,dist_func,cum_prox_sum=None):
     if cum_prox_sum == None:        
-        K = X.shape[1]
-        for l in range(0,K):
-            for j in range(0,K):
-                num += np.power(dist_func(X[:,l],X[:,j]),2) 
+        num = np.sum(np.power(np.triu(squareform(pdist(np.transpose(Xj),'euclidean'))),2)) 
     else:
         num = cum_prox_sum
             
-    den = 0
-    for j in range(0,K):
-        den += np.power(dist_func(x,X[:,j]),2)
-    D = num/(2*K*den)
+    if x.size == x.shape[0]:        
+        den = 2*Xj.shape[1]*np.sum(np.power(cdist(x.reshape(1,-1),np.transpose(Xj),metric='euclidean'),2))
+        
+    else:
+        den = 2*Xj.shape[1]*np.sum(np.power(cdist(np.transpose(x),np.transpose(Xj),metric='euclidean'),2),axis=1)
+        
+    D = num/den 
     return D
+
+def cum_prox(X,dist_func,cov_inv=None):    
+    if dist_func == 'euclidean':
+        vals = np.sum(np.power(np.triu(squareform(pdist(np.transpose(X),'euclidean'))),2),axis=1)          
+    return vals
 
 def dist_euclidean(x1,x2):
     return np.linalg.norm(x2-x1)
