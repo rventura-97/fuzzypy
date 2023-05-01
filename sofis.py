@@ -23,6 +23,11 @@ class sofis:
             self.N += self.class_models[c].P.shape[1]
         
     def fit_online(self,X,y):
+        X = np.transpose(X)
+        
+        for k in range(0,X.shape[1]):
+            self.class_models[y[k]].update(X[:,k])
+        
         return 0
     
     def predict(self,X):
@@ -54,8 +59,12 @@ class class_model:
     def __init__(self,L,dist):
         self.L = L
         self.dist = dist
+        self.K = []
         self.P = []
+        self.S = []
         self.G = []
+        self.x = []
+        self.Xk = []
         self.Sigma = []
         self.Sigma_inv = []
         self.CumProx = []
@@ -65,8 +74,10 @@ class class_model:
         
     def fit_offline(self,X):
         # Initialize global model parameters
+        self.K = X.shape[1]
         self.Mu = np.mean(X,axis=1)
         self.X = np.mean([np.dot(X[:,i],np.transpose(X[:,i])) for i in range(0,X.shape[1])])
+        self.x = X
         
         if self.dist == 'mahalanobis':
             self.Sigma = np.cov(X)
@@ -95,7 +106,8 @@ class class_model:
         self.G = self.__radius_of_influence(p_dists, self.MeanDist, self.L)
         
         # Select most representive clouds
-        self.P = self.__select_clouds(Phi, Phi_D_mmd, self.G)
+        self.P, self.S = self.__select_clouds(Phi, Phi_D_mmd, self.G, S)
+        
          
     def predict(self,x,predict_metric):
         vals = np.zeros(self.P.shape[1])
@@ -111,6 +123,14 @@ class class_model:
             val = np.min(vals)
                 
         return val
+    
+    def update(self,x):
+        # Update global model parameters
+        Mu_k = ((self.K-1)/self.K)*self.Mu + (1/self.K)*x
+        X_k = ((self.K-1)/self.K)*self.X + (1/self.K)*np.dot(x,np.transpose(x))
+            
+        
+        self.K += 1
         
     def __rank_samples(self,D_mm,U,dist_func):
         D_mm_r = np.zeros_like(D_mm)
@@ -173,7 +193,7 @@ class class_model:
         return G        
 
 
-    def __select_clouds(self,Phi,Phi_D_mmd,G):
+    def __select_clouds(self,Phi,Phi_D_mmd,G,S):
         
         Phi_neigh = [[] for _ in range(Phi.shape[1])]
         dist_Phi = np.power(squareform(pdist(np.transpose(Phi),'euclidean')),2)
@@ -185,19 +205,23 @@ class class_model:
                         
         # Find most representative clouds
         P = np.zeros_like(Phi)
+        P_S = np.zeros(len(Phi_neigh))
         P_idx = 0
         for i in range(0,len(Phi_neigh)):
             if np.sum(Phi_neigh[i]) > 0:
                 if Phi_D_mmd[i] > np.max(Phi_D_mmd[Phi_neigh[i]]):
                     P[:,P_idx] = Phi[:,i]
+                    P_S[P_idx] = S[i]
                     P_idx += 1
             else:
                 P[:,P_idx] = Phi[:,i]
+                P_S[P_idx] = S[i]
                 P_idx += 1
     
         P = P[:,0:P_idx]
+        P_S = P_S[0:P_idx]
     
-        return P
+        return P, P_S
 
 
 def unimodal_density(x,Xj,dist_func,cum_prox_sum=None):
