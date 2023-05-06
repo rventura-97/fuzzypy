@@ -126,26 +126,44 @@ class class_model:
     
     def update(self,x):
         # Update global model parameters
-        Mu_k = ((self.K-1)/self.K)*self.Mu + (1/self.K)*x
-        X_k = ((self.K-1)/self.K)*self.X + (1/self.K)*np.dot(x,np.transpose(x))
-        dists_xk_x = np.squeeze(np.power(cdist(x.reshape(1,-1),np.transpose(self.x),metric='euclidean'),2))
-        ###
-        CumProx_k = np.append(self.CumProx + dists_xk_x,np.sum(dists_xk_x))
-        CumProxSum_k = np.sum(CumProx_k)
-        ###
-        MeanDist_k = (1/np.power(self.K+1,2))*CumProxSum_k
-        G_k = (MeanDist_k/self.MeanDist)*self.G
+        self.K += 1
+        self.Mu = ((self.K-1)/self.K)*self.Mu + (1/self.K)*x
+        self.X = ((self.K-1)/self.K)*self.X + (1/self.K)*np.dot(x,np.transpose(x))
+        cum_prox_xk = np.squeeze(np.power(cdist(x.reshape(1,-1),np.transpose(self.x),metric='euclidean'),2))
+        cum_prox_sum_xk = np.sum(cum_prox_xk)
+        self.CumProx = np.append(self.CumProx + cum_prox_xk,cum_prox_sum_xk)
+        self.CumProxSum = self.CumProxSum+2*cum_prox_sum_xk
+        MeanDist_k = (1/np.power(self.K+1,2))*self.CumProxSum
+        self.G = (MeanDist_k/self.MeanDist)*self.G
+        self.MeanDist = MeanDist_k
+        self.x = np.column_stack((self.x,x))
         
         # Compute sample unimodal density
+        x_umd = unimodal_density(x,self.x,'euclidean',self.CumProxSum)
         
         # Compute cloud unimodal densities
+        p_mmd = unimodal_density(self.P,self.x,'euclidean',self.CumProxSum)
         
         # Evaluate density condition
+        if x_umd > np.max(p_mmd) or x_umd < np.min(p_mmd):
+            # Create new cloud
+            self.P = np.column_stack((self.P,x))
+            self.S = np.append(self.S,[1])
+        else:
+            dist_x_p = np.squeeze(np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2))
+            # Evaluate proximity condition
+            if np.min(dist_x_p) > self.G:
+                # Create new cloud
+                self.P = np.column_stack((self.P,x))
+                self.S = np.append(self.S,[1])
+            else:
+                # Update nearest cloud
+                dist_x_p_min = np.argmin(dist_x_p)
+                self.S[dist_x_p_min] += 1
+                self.P[:,dist_x_p_min] = ((self.S[dist_x_p_min]-1)/self.S[dist_x_p_min])*self.Mu + (1/self.S[dist_x_p_min])*x
         
         
         
-        self.x = np.column_stack((self.x,x))
-        self.K += 1
         
     def __rank_samples(self,D_mm,U,dist_func):
         D_mm_r = np.zeros_like(D_mm)
@@ -239,11 +257,9 @@ class class_model:
         return P, P_S
 
 
-def unimodal_density(x,Xj,dist_func,cum_prox_sum=None):
-    if cum_prox_sum == None:        
-        num = np.sum(np.power(np.triu(squareform(pdist(np.transpose(Xj),'euclidean'))),2)) ### retirar triu
-    else:
-        num = cum_prox_sum
+def unimodal_density(x,Xj,dist_func,cum_prox_sum):
+
+    num = cum_prox_sum
             
     if x.size == x.shape[0]:        
         den = 2*Xj.shape[1]*np.sum(np.power(cdist(x.reshape(1,-1),np.transpose(Xj),metric='euclidean'),2))
