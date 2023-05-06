@@ -1,17 +1,7 @@
 # %%
-import numpy as np
 from sofis import sofis
-from sklearn.datasets import load_iris
-from read_data import load_occupancy
-from sklearn.model_selection import train_test_split
+from read_data import load_occupancy, load_optical_digits
 from sklearn.metrics import accuracy_score
-
-# %% Iris dataset
-iris_data = load_iris()
-X = np.array(iris_data.data)
-y = np.array(iris_data.target)
-X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.2,random_state=42)
-X_off, X_on, y_off, y_on = train_test_split(X_train,y_train,test_size=0.5,random_state=42)
 
 # %% Occupancy Dataset (Offline Training)
 occup_data = load_occupancy()
@@ -21,10 +11,25 @@ y_train = occup_data['y_train']
 y_test = occup_data['y_test']
 
 # Train model
-mod = sofis(L=12,dist='euclidean')
+mod = sofis(L=1,dist='euclidean')
 mod.fit_offline(X_train,y_train)
 
-# %% Test model
+# Test model
+y_pred = mod.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+
+# %% Optical Dataset (Offline Training)
+optic_data = load_optical_digits()
+X_train = optic_data['X_train']
+X_test = optic_data['X_test']
+y_train = optic_data['y_train']
+y_test = optic_data['y_test']
+
+# Train model
+mod = sofis(L=4,dist='euclidean')
+mod.fit_offline(X_train,y_train)
+
+# Test model
 y_pred = mod.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
 

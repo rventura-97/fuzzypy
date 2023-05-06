@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 def load_occupancy():
     X_train = pd.read_csv('DATA/occupancy_data/datatraining.txt')
@@ -9,6 +8,18 @@ def load_occupancy():
     data = {'X_train':X_train.iloc[:,1:6].to_numpy(),\
             'y_train':X_train.iloc[:,-1].to_numpy(),\
             'X_test':X_test.iloc[:,1:6].to_numpy(),\
-            'y_test':X_test.iloc[:,-1].to_numpy(),\
-            'target_names':X_train.columns.values[1:-1]}
+            'y_test':X_test.iloc[:,-1].to_numpy()}
     return data
+
+def load_optical_digits():
+    X_train = pd.read_csv('DATA/opt_digits_data/optdigits.tra',header=None)
+    X_test = pd.read_csv('DATA/opt_digits_data/optdigits.tes',header=None)
+    data = {'X_train':X_train.iloc[:,0:-1].to_numpy(),\
+            'y_train':X_train.iloc[:,-1].to_numpy(),\
+            'X_test':X_test.iloc[:,0:-1].to_numpy(),\
+            'y_test':X_test.iloc[:,-1].to_numpy()}
+    return data
+
+def load_letter_recognition():
+    X = pd.read_csv('DATA/letter-recognition.data',header=None)
+    return 0

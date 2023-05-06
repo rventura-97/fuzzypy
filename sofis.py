@@ -26,6 +26,7 @@ class sofis:
         X = np.transpose(X)
         
         for k in range(0,X.shape[1]):
+            print(X.shape[1]-k)
             self.class_models[y[k]].update(X[:,k])
         
         return 0
@@ -39,6 +40,11 @@ class sofis:
             for c in range(0,min_class_dists.size):
                 min_class_dists[c] = np.min(self.class_models[c].cloud_dists(X[:,i]))
             y_pred[i] = np.argmin(min_class_dists)
+            
+            # max_class_lambdas = np.zeros(len(self.class_models))
+            # for c in range(0,max_class_lambdas.size):
+            #     max_class_lambdas[c] = np.max(self.class_models[c].max_lambda(X[:,i]))
+            # y_pred[i] = np.argmax(max_class_lambdas)
 
         return y_pred
         
@@ -107,9 +113,13 @@ class class_model:
          
     def cloud_dists(self,x):
         if self.dist == 'euclidean':
-            dists = cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean')
-        return dists
+            dists = np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2)
+        return np.min(dists)
             
+    def max_lambda(self,x):
+        if self.dist == 'euclidean':
+            dists = np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2)
+        return np.max(np.exp(-dists/(self.X-np.dot(self.Mu,np.transpose(self.Mu)))))
 
     
     def update(self,x):
