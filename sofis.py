@@ -35,15 +35,11 @@ class sofis:
         y_pred = np.zeros(X.shape[1])
         
         for i in range(0,y_pred.size):
-            vals = np.zeros(len(self.class_models))
-            for c in range(0,vals.size):
-                vals[c] = self.class_models[c].predict(X[:,i],self.predict_metric)
-                    
-            if self.predict_metric=='lambda':     
-                y_pred[i] = np.argmax(vals)
-            else:
-                y_pred[i] = np.argmin(vals)
-        
+            min_class_dists = np.zeros(len(self.class_models))
+            for c in range(0,min_class_dists.size):
+                min_class_dists[c] = np.min(self.class_models[c].cloud_dists(X[:,i]))
+            y_pred[i] = np.argmin(min_class_dists)
+
         return y_pred
         
     
@@ -109,20 +105,12 @@ class class_model:
         self.P, self.S = self.__select_clouds(Phi, Phi_D_mmd, self.G, S)
         
          
-    def predict(self,x,predict_metric):
-        vals = np.zeros(self.P.shape[1])
+    def cloud_dists(self,x):
         if self.dist == 'euclidean':
-            if predict_metric == 'lambda':
-                vals = np.exp(-np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2))
-            else:
-                vals = np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2)
+            dists = cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean')
+        return dists
             
-        if predict_metric == 'lambda':
-            val = np.max(vals)
-        else:
-            val = np.min(vals)
-                
-        return val
+
     
     def update(self,x):
         # Update global model parameters
@@ -160,7 +148,8 @@ class class_model:
                 # Update nearest cloud
                 dist_x_p_min = np.argmin(dist_x_p)
                 self.S[dist_x_p_min] += 1
-                self.P[:,dist_x_p_min] = ((self.S[dist_x_p_min]-1)/self.S[dist_x_p_min])*self.Mu + (1/self.S[dist_x_p_min])*x
+                self.P[:,dist_x_p_min] = ((self.S[dist_x_p_min]-1)/self.S[dist_x_p_min])*\
+                                         self.Mu + (1/self.S[dist_x_p_min])*x
         
         
         
