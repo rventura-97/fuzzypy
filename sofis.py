@@ -38,13 +38,8 @@ class sofis:
         for i in range(0,y_pred.size):
             min_class_dists = np.zeros(len(self.class_models))
             for c in range(0,min_class_dists.size):
-                min_class_dists[c] = np.min(self.class_models[c].cloud_dists(X[:,i]))
+                min_class_dists[c] = self.class_models[c].min_cloud_dist(X[:,i])
             y_pred[i] = np.argmin(min_class_dists)
-            
-            # max_class_lambdas = np.zeros(len(self.class_models))
-            # for c in range(0,max_class_lambdas.size):
-            #     max_class_lambdas[c] = np.max(self.class_models[c].max_lambda(X[:,i]))
-            # y_pred[i] = np.argmax(max_class_lambdas)
 
         return y_pred
         
@@ -110,16 +105,11 @@ class class_model:
         # Select most representive clouds
         self.P, self.S = self.__select_clouds(Phi, Phi_D_mmd, self.G, S)
         
-         
-    def cloud_dists(self,x):
-        if self.dist == 'euclidean':
-            dists = np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2)
-        return np.min(dists)
             
-    def max_lambda(self,x):
+    def min_cloud_dist(self,x):
         if self.dist == 'euclidean':
-            dists = np.power(cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean'),2)
-        return np.max(np.exp(-dists/(self.X-np.dot(self.Mu,np.transpose(self.Mu)))))
+            dists = cdist(x.reshape(1,-1),np.transpose(self.P),metric='euclidean')
+        return np.min(dists)
 
     
     def update(self,x):
